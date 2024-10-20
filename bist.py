@@ -139,22 +139,7 @@ else:
         )
         st.plotly_chart(fig_macd)
 
-    # ATR grafiği
-    if "ATR" in indicators:
-        fig_atr = go.Figure()
-        fig_atr.add_trace(go.Scatter(x=df.index, y=df['ATR'], mode='lines', name='ATR', line=dict(color='purple')))
-        fig_atr.update_layout(
-            height=200,
-            margin=dict(l=20, r=20, t=20, b=20),
-            yaxis=dict(title='ATR'),
-            xaxis_title='Tarih',
-            yaxis_title='ATR Değeri'
-        )
-        st.plotly_chart(fig_atr)
-
-    # Hisse senedi fiyat tablosu - Tarihleri ters çevir
-    st.subheader("Hisse Senedi Fiyatlar Tablosu")
-    st.write(df.sort_index(ascending=False))  # Tarihleri ters sırala
+   
 
     # Hisse senedi fiyat tablosunu indir butonu
     csv = df.to_csv().encode('utf-8')
