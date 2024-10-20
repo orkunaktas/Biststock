@@ -110,6 +110,10 @@ else:
     )
     st.plotly_chart(fig_volume)
 
+    # Hisse fiyatları tablosunu gösterme
+    st.subheader("Hisse Senedi Fiyatları")
+    st.dataframe(df)
+
     # RSI grafiği
     if "RSI" in indicators:
         fig_rsi = go.Figure()
@@ -148,14 +152,22 @@ else:
             margin=dict(l=20, r=20, t=20, b=20),
             yaxis=dict(title='ATR'),
             xaxis_title='Tarih',
-            yaxis_title='ATR Değeri'
+            yaxis_title='ATR Değeri',
+            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)  # Legend konumu sol üst köşe
         )
         st.plotly_chart(fig_atr)
 
-    # Hisse senedi fiyat tablosu - Tarihleri ters çevir
-    st.subheader("Hisse Senedi Fiyatlar Tablosu")
-    st.write(df.sort_index(ascending=False))  # Tarihleri ters sırala
-
-    # Hisse senedi fiyat tablosunu indir butonu
-    csv = df.to_csv().encode('utf-8')
-    st.download_button("CSV olarak indir", csv, "hisse_fiyatlari.csv", "text/csv", key='download-csv')
+    # Aylık yüzdelik değişim grafiği
+    st.subheader("Aylık Yüzdelik Değişim Grafiği")
+    monthly_return = df['Close'].resample('M').ffill().pct_change() * 100
+    colors = np.where(monthly_return > 0, 'green', 'red')  # Pozitif değişim yeşil, negatif değişim kırmızı
+    fig_monthly_return = go.Figure()
+    fig_monthly_return.add_trace(go.Bar(x=monthly_return.index, y=monthly_return, marker_color=colors))
+    fig_monthly_return.update_layout(
+        title="Aylık Yüzdelik Değişim",
+        xaxis_title="Tarih",
+        yaxis_title="Yüzde Değişim",
+        height=400,
+        margin=dict(l=20, r=20, t=20, b=20)
+    )
+    st.plotly_chart(fig_monthly_return)
