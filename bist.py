@@ -1,13 +1,13 @@
 import numpy as np
-from datetime import datetime
+import pandas as pd
 import yfinance as yf
-import matplotlib.pyplot as plt
 import streamlit as st
 import plotly.graph_objects as go
+from datetime import datetime
 
 # Streamlit sidebar'dan hisse sembolü alınır
 symbol = st.sidebar.text_input("Hisse senedi sembolü", value="ASELS")
-st.title(symbol + " Hisse Senedi Grafiği")
+st.title(f"{symbol} Hisse Senedi Grafiği")
 
 # Başlangıç ve bitiş tarihleri Streamlit sidebar'dan alınır
 start_date = st.sidebar.date_input("Başlangıç Tarihi", value=datetime(2024, 1, 1))
@@ -20,35 +20,36 @@ df = yf.download(symbol + '.IS', start=start_date, end=end_date)
 if df.empty:
     st.error("Hisse verileri alınamadı. Lütfen sembolü kontrol edin veya farklı bir tarih aralığı deneyin.")
 else:
-    # Hisse senedi kapanış fiyatı grafiği
-    st.subheader("Hisse Senedi Trend Grafiği")
-    st.line_chart(df["Close"])
+    # Grafik tipi seçme seçenekleri (candle, line, mountain)
+    chart_type = st.sidebar.selectbox("Grafik Türünü Seçin", ["line", "candle", "mountain"])
 
-    # Hisse senedi hacim grafiği
-    st.subheader("Hisse Senedi Hacim Grafiği")
-    st.bar_chart(df['Volume'])
+    # Hisse senedi kapanış fiyatı ve hacim grafiği
+    st.subheader("Hisse Senedi Trend ve Hacim Grafikleri")
 
-    # Hisse senedi fiyat tablosu - Tarihleri ters çevir
-    st.subheader("Hisse Senedi Fiyatlar Tablosu")
-    st.write(df.sort_index(ascending=False))  # Tarihleri ters sırala
+    # İlk olarak trend grafiğini geniş bir formatta çizelim
+    fig = go.Figure()
 
-    # Hisse Senedi İstatistikleri
-    st.subheader("Hisse Senedi İstatistikleri")
-    st.write(f"Son Fiyat: {df['Close'][-1]}")
-    st.write(f"52 Haftalık Yüksek: {df['Close'].max()}")
-    st.write(f"52 Haftalık Düşük: {df['Close'].min()}")
+    # Grafik türü seçimine göre grafiği çizdirme
+    if chart_type == "line":
+        # Kapanış fiyatı çizgisel grafik
+        fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name='Kapanış Fiyatı', line=dict(color='blue')))
+    elif chart_type == "candle":
+        # Mum grafik
+        fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
+                                     name='Mum Grafik'))
+    elif chart_type == "mountain":
+        # Dağ grafik
+        fig.add_trace(go.Scatter(x=df.index, y=df['Close'], fill='tozeroy', mode='lines', name='Mountain', line=dict(color='green')))
 
-    # Hareketli Ortalama Hesaplama
-    ma_short = df['Close'].rolling(window=20).mean()  # 20 günlük MA
-    ma_long = df['Close'].rolling(window=50).mean()   # 50 günlük MA
+    # Hareketli Ortalama Hesaplama (SMA ve EMA)
+    ma_short = df['Close'].rolling(window=20).mean()  # 20 günlük SMA
+    ema_long = df['Close'].ewm(span=50, adjust=False).mean()  # 50 günlük EMA
 
-    # Hareketli Ortalamaların Grafiği
-    st.subheader("Hareketli Ortalamalar")
-    fig_ma = go.Figure()
-    fig_ma.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name='Kapanış Fiyatı'))
-    fig_ma.add_trace(go.Scatter(x=df.index, y=ma_short, mode='lines', name='20 Günlük MA'))
-    fig_ma.add_trace(go.Scatter(x=df.index, y=ma_long, mode='lines', name='50 Günlük MA'))
-    st.plotly_chart(fig_ma)
+    # Bollinger Bantları
+    window = 20
+    std = df['Close'].rolling(window).std()
+    df['Bollinger_Upper'] = ma_short + (std * 2)
+    df['Bollinger_Lower'] = ma_short - (std * 2)
 
     # RSI Hesaplama
     delta = df['Close'].diff()
@@ -58,33 +59,103 @@ else:
     rsi = 100 - (100 / (1 + rs))
     df['RSI'] = rsi
 
-    st.subheader("RSI Grafiği")
-    st.line_chart(df['RSI'])
+    # MACD Hesaplama
+    exp1 = df['Close'].ewm(span=12, adjust=False).mean()  # 12-günlük EMA
+    exp2 = df['Close'].ewm(span=26, adjust=False).mean()  # 26-günlük EMA
+    macd = exp1 - exp2
+    signal = macd.ewm(span=9, adjust=False).mean()
+    df['MACD'] = macd
+    df['Signal_Line'] = signal
 
-    # Bollinger Bantları Hesaplama
-    window = 20
-    std = df['Close'].rolling(window).std()
-    df['Bollinger_Upper'] = ma_short + (std * 2)
-    df['Bollinger_Lower'] = ma_short - (std * 2)
+    # Average True Range (ATR) Hesaplama
+    high_low = df['High'] - df['Low']
+    high_close = np.abs(df['High'] - df['Close'].shift())
+    low_close = np.abs(df['Low'] - df['Close'].shift())
+    tr = high_low.combine(high_close, max).combine(low_close, max)
+    atr = tr.rolling(window=14).mean()
+    df['ATR'] = atr
 
-    st.subheader("Bollinger Bantları")
-    fig_bollinger = go.Figure()
-    fig_bollinger.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name='Kapanış Fiyatı'))
-    fig_bollinger.add_trace(go.Scatter(x=df.index, y=ma_short, mode='lines', name='Orta Bant (20 Günlük MA)', line=dict(color='orange')))  # Orta bant eklendi
-    fig_bollinger.add_trace(go.Scatter(x=df.index, y=df['Bollinger_Upper'], mode='lines', name='Üst Bant'))
-    fig_bollinger.add_trace(go.Scatter(x=df.index, y=df['Bollinger_Lower'], mode='lines', name='Alt Bant'))
-    st.plotly_chart(fig_bollinger)
+    # Kullanıcının göstermek istediği indikatörler
+    indicators = st.sidebar.multiselect("Gösterilecek İndikatörler", 
+                                        ["SMA (20)", "EMA (50)", "RSI", "MACD", "Bollinger Bands", "ATR"])
 
-    # Mum Grafiği
-    if st.sidebar.checkbox("Mum Grafiği Göster"):
-        fig = go.Figure(data=[go.Candlestick(x=df.index,
-                                               open=df['Open'],
-                                               high=df['High'],
-                                               low=df['Low'],
-                                               close=df['Close'])])
-        st.plotly_chart(fig)
+    # Ana grafik: Kapanış fiyatı ve seçilen indikatörler
+    if "SMA (20)" in indicators:
+        fig.add_trace(go.Scatter(x=df.index, y=ma_short, mode='lines', name='SMA (20)', line=dict(color='orange')))
+    
+    if "EMA (50)" in indicators:
+        fig.add_trace(go.Scatter(x=df.index, y=ema_long, mode='lines', name='EMA (50)', line=dict(color='purple')))
 
-    # Kullanıcı geri bildirimi
-    feedback = st.sidebar.text_area("Geri Bildirim veya Öneri bırakın")
-    if st.sidebar.button("Gönder"):
-        st.sidebar.success("Geri bildiriminiz için teşekkür ederiz!")
+    if "Bollinger Bands" in indicators:
+        fig.add_trace(go.Scatter(x=df.index, y=df['Bollinger_Upper'], mode='lines', name='Bollinger Üst Bant', line=dict(color='red')))
+        fig.add_trace(go.Scatter(x=df.index, y=df['Bollinger_Lower'], mode='lines', name='Bollinger Alt Bant', line=dict(color='red')))
+        fig.add_trace(go.Scatter(x=df.index, y=ma_short, mode='lines', name='Bollinger Orta Bant', line=dict(color='orange')))  # Orta bant ekleme
+
+    # Geniş ve uzun bir trend grafiği
+    fig.update_layout(
+        height=500,  # Yükseklik ayarı (trendi daha geniş yapmak için)
+        margin=dict(l=20, r=20, t=20, b=20),  # Kenar boşlukları daraltılmış
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)  # Legend konumu sol üst köşe
+    )
+    st.plotly_chart(fig)
+
+    # Hacim grafiği: Daha kısa ve trend grafiği ile aynı genişlikte olacak
+    fig_volume = go.Figure()
+    fig_volume.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Hacim'))
+
+    # Daha kısa hacim grafiği
+    fig_volume.update_layout(
+        height=200,  # Daha kısa hacim grafiği
+        margin=dict(l=20, r=20, t=20, b=20),  # Kenar boşlukları daraltılmış
+    )
+    st.plotly_chart(fig_volume)
+
+    # RSI grafiği
+    if "RSI" in indicators:
+        fig_rsi = go.Figure()
+        fig_rsi.add_trace(go.Scatter(x=df.index, y=df['RSI'], mode='lines', name='RSI', line=dict(color='blue')))
+        fig_rsi.update_layout(
+            height=200,
+            margin=dict(l=20, r=20, t=20, b=20),
+            yaxis=dict(title='RSI', range=[0, 100]),
+            xaxis_title='Tarih',
+            yaxis_title='RSI Değeri',
+            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)  # Legend konumu sol üst köşe
+        )
+        st.plotly_chart(fig_rsi)
+
+    # MACD grafiği
+    if "MACD" in indicators:
+        fig_macd = go.Figure()
+        fig_macd.add_trace(go.Scatter(x=df.index, y=df['MACD'], mode='lines', name='MACD', line=dict(color='green')))
+        fig_macd.add_trace(go.Scatter(x=df.index, y=df['Signal_Line'], mode='lines', name='Signal Line', line=dict(color='red')))
+        fig_macd.update_layout(
+            height=200,
+            margin=dict(l=20, r=20, t=20, b=20),
+            yaxis=dict(title='MACD'),
+            xaxis_title='Tarih',
+            yaxis_title='MACD Değeri',
+            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)  # Legend konumu sol üst köşe
+        )
+        st.plotly_chart(fig_macd)
+
+    # ATR grafiği
+    if "ATR" in indicators:
+        fig_atr = go.Figure()
+        fig_atr.add_trace(go.Scatter(x=df.index, y=df['ATR'], mode='lines', name='ATR', line=dict(color='purple')))
+        fig_atr.update_layout(
+            height=200,
+            margin=dict(l=20, r=20, t=20, b=20),
+            yaxis=dict(title='ATR'),
+            xaxis_title='Tarih',
+            yaxis_title='ATR Değeri'
+        )
+        st.plotly_chart(fig_atr)
+
+    # Hisse senedi fiyat tablosu - Tarihleri ters çevir
+    st.subheader("Hisse Senedi Fiyatlar Tablosu")
+    st.write(df.sort_index(ascending=False))  # Tarihleri ters sırala
+
+    # Hisse senedi fiyat tablosunu indir butonu
+    csv = df.to_csv().encode('utf-8')
+    st.download_button("CSV olarak indir", csv, "hisse_fiyatlari.csv", "text/csv", key='download-csv')
