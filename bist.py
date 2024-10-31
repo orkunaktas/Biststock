@@ -171,4 +171,3 @@ else:
         margin=dict(l=20, r=20, t=20, b=20)
     )
     st.plotly_chart(fig_monthly_return)
- 
